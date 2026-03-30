@@ -1,35 +1,29 @@
-"""
-================================================================================
-STRUCTURE 01 – Technical Notes for the Developer
-================================================================================
-1. API:        pyTelegramBotAPI (telebot)
-2. Fast Send:  The dictionary `cached_file_ids` stores Telegram file_ids after
-               the first send. Subsequent sends use the ID, making images load
-               instantly.
-3. Security:   Token is read from .env using python-dotenv. NEVER hardcode it,
-               and make sure .env is added to .gitignore.
-4. Polling:    timeout=90 ensures stability even in Termux environments.
-5. Markdown:   All captions use parse_mode='Markdown' for the cyber look.
-6. Visual IDs: All image links are stored in `SECTION_LOGOS` for easy updates.
-================================================================================
-"""
-
 import os
+import logging
+from typing import Dict, Optional
+
 import telebot
 from telebot import types
 from dotenv import load_dotenv
 
-# ─── Environment & Security ───────────────────────────────────────────────────
+# ─── إعدادات البيئة والتسجيل ─────────────────────────────────────────────────
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")
+
+TOKEN = os.getenv("STRUCTURE_BOT_TOKEN") or os.getenv("BOT_TOKEN")
 if not TOKEN:
-    raise ValueError("No BOT_TOKEN found in environment variables. Please create a .env file.")
+    raise ValueError("❌ لم يتم العثور على التوكن! تأكد من ملف .env")
+
+ADMIN_IDS = [int(id.strip()) for id in os.getenv("ADMIN_IDS", "").split(",") if id.strip()]
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
 bot = telebot.TeleBot(TOKEN)
 
-# ─── Fast Send Cache (stores Telegram file_ids after first use) ──────────────
-cached_file_ids = {}
+# ─── ذاكرة التخزين المؤقت لمعرفات الصور (لتحسين السرعة) ─────────────────────
+cached_file_ids: Dict[str, str] = {}
 
-# ─── Visual Identity – all section logos (easily replaceable) ────────────────
+# ─── الهوية البصرية – روابط الصور (يمكن استبدالها بمعرفات مباشرة بعد التخزين) ───
 SECTION_LOGOS = {
     "MAIN":      "https://raw.githubusercontent.com/SongJinwoo1/Structure-01/main/IMG_4782.jpeg",
     "RECEPTION": "https://raw.githubusercontent.com/SongJinwoo1/Structure-01/main/IMG_4793.jpeg",
@@ -42,7 +36,7 @@ SECTION_LOGOS = {
     "COMMAND":   "https://raw.githubusercontent.com/SongJinwoo1/Structure-01/main/IMG_4780.jpeg"
 }
 
-# ─── Button Texts (Constants) ────────────────────────────────────────────────
+# ─── نصوص الأزرار (ثوابت) ────────────────────────────────────────────────────
 BTN_RECEPTION = '🤝 قـسـم الاسـتـقـبال ╎ 𝐑𝐄𝐂𝐄𝐏𝐓𝐈𝐎𝐍'
 BTN_LOGIC     = '🧠 مُـخـتـبـر الـمـنـطـق ╎ 𝐋𝐎𝐆𝐈𝐂   𝐋𝐀𝐁'
 BTN_SEC       = '🛡️ أمـن الـبـيـانـات ╎ 𝐒𝐄𝐂𝐔𝐑𝐈𝐓𝐘   𝐂𝐄𝐍𝐓𝐄𝐑'
@@ -52,12 +46,55 @@ BTN_VISUAL    = '🎨 واجـهة الـنظام ╎ 𝐕𝐈𝐒𝐔𝐀𝐋  
 BTN_STRATEGY  = '🧠 غـرفـة الاسـتـشـارة ╎ 𝐒𝐓𝐑𝐀𝐓𝐄𝐆𝐘   𝐑𝐎𝐎𝐌'
 BTN_DEV       = '👤 الـتواصل مـع الـقـيادة ╎ 𝐇𝐈𝐆𝐇   𝐂𝐎𝐌𝐌𝐀𝐍𝐃'
 
-# ─── Fast Send Engine (caches and sends images) ──────────────────────────────
-def send_interface(chat_id, text, reply_markup=None, logo_key="MAIN"):
+# ─── ردود الأزرار (محتوى الصفحات) ────────────────────────────────────────────
+# يمكنك تخصيص النص واللوجو لكل زر هنا
+SECTION_RESPONSES = {
+    BTN_RECEPTION: {
+        "text": ("//ـ ســيـسـتـم أريــس تــك ╎ *𝐀𝐑𝐈𝐒𝐄 𝐓𝐄𝐂𝐇*\n"
+                 "• [𝐖𝐞𝐥𝐜𝐨𝐦𝐞   𝐆𝐚𝐭𝐞](https://songjinwoo1.github.io/Bot-Song-Jin-Woo/)"),
+        "logo": "RECEPTION"
+    },
+    BTN_LOGIC: {
+        "text": "*//ـ مُـخـتـبـر الـمـنـطـق ╎ 𝐋𝐎𝐆𝐈𝐂   𝐋𝐀𝐁*\n\n\"المنطق هو البوصلة هنا.\"",
+        "logo": "LOGIC"
+    },
+    BTN_SEC: {
+        "text": "*//ـ أمـن الـبـيـانـات ╎ 𝐒𝐄𝐂𝐔𝐑𝐈𝐓𝐘   𝐂𝐄𝐍𝐓𝐄𝐑*\n\nجميع البيانات مشفرة تحت إشراف النظام.",
+        "logo": "SECURITY"
+    },
+    BTN_ARCHIVE: {
+        "text": "*//ـ الأرشــيــف ╎ 𝐓𝐇𝐄   𝐀𝐑𝐂𝐇𝐈𝐕𝐄*\n\nهنا تُحفظ سجلات المنظمة.",
+        "logo": "ARCHIVE"
+    },
+    BTN_CORE: {
+        "text": "*//ـ نـواة الـتـطويـر ╎ 𝐃𝐄𝐕𝐄𝐋𝐎𝐏𝐌𝐄𝐍𝐓   𝐂𝐎𝐑𝐄*\n\nمنطقة التطوير التقني والتجارب.",
+        "logo": "CORE"
+    },
+    BTN_VISUAL: {
+        "text": "*//ـ واجـهة الـنظام ╎ 𝐕𝐈𝐒𝐔𝐀𝐋   𝐀𝐑𝐂𝐀𝐍𝐄*\n\nالهوية البصرية للواجهات.",
+        "logo": "VISUAL"
+    },
+    BTN_STRATEGY: {
+        "text": "*//ـ غـرفـة الاسـتـشـارة*\n\n\"الهدوء هو قمة القوة.\"",
+        "logo": "STRATEGY"
+    },
+    BTN_DEV: {
+        "text": "*//ـ قـناة الاتـصال الـعـلـيا*\n\nتواصل مع القيادة العليا:",
+        "logo": "COMMAND",
+        "inline_buttons": [
+            {"text": "𝑺𝒐𝒏𝒈 𝑱𝒊𝒏 𝑾𝒐𝒐", "url": "https://wa.me/96597805334"},
+            {"text": "𝙺𝚒𝚢𝚘𝚝𝚊𝚔𝚊 𝙰𝚢𝚊𝚗𝚘𝚔𝚘𝚞𝚓𝚒", "url": "https://wa.me/201055719273"}
+        ]
+    }
+}
+
+# ─── محرك الإرسال السريع (مع ذاكرة تخزين وعودة للرابط عند الفشل) ─────────────
+def send_interface(chat_id: int, text: str, reply_markup=None, logo_key: str = "MAIN") -> None:
     """
-    Sends a message with an image. On first use, the image is downloaded
-    from the URL; later calls use the cached Telegram file_id for speed.
-    If sending the image fails, falls back to text-only message.
+    إرسال واجهة تحتوي على صورة ونص.
+    - تحاول إرسال الصورة باستخدام file_id المخزن أو الرابط.
+    - إذا فشلت، ترسل النص فقط.
+    - تخزن file_id بعد الإرسال الأول لتسريع المرات التالية.
     """
     image = cached_file_ids.get(logo_key, SECTION_LOGOS.get(logo_key))
     try:
@@ -65,62 +102,64 @@ def send_interface(chat_id, text, reply_markup=None, logo_key="MAIN"):
                               caption=text,
                               reply_markup=reply_markup,
                               parse_mode='Markdown')
-        # Cache the file_id after the first successful send
+        # تخزين file_id إذا كان جديدًا
         if logo_key not in cached_file_ids:
             cached_file_ids[logo_key] = sent.photo[-1].file_id
-    except Exception:
-        # Fallback: send only text if image fails
-        bot.send_message(chat_id, text,
-                         reply_markup=reply_markup,
-                         parse_mode='Markdown')
+            logger.info(f"Cached file_id for {logo_key}")
+    except Exception as e:
+        logger.error(f"Failed to send photo for {logo_key}: {e}")
+        # إرسال النص فقط في حال فشل الصورة
+        bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode='Markdown')
 
-# ─── Handlers ────────────────────────────────────────────────────────────────
+# ─── أوامر المسؤول ───────────────────────────────────────────────────────────
+@bot.message_handler(commands=['reload'])
+def reload_cache(message):
+    """إعادة تحميل ذاكرة التخزين المؤقت (للمسؤولين فقط)"""
+    if message.from_user.id not in ADMIN_IDS:
+        bot.reply_to(message, "⛔ غير مصرح.")
+        return
+    cached_file_ids.clear()
+    bot.reply_to(message, "✅ تم إعادة تحميل ذاكرة الصور.")
+
+# ─── واجهة الترحيب الرئيسية ──────────────────────────────────────────────────
 @bot.message_handler(commands=['start'])
 def welcome(message):
-    """Start command – shows main menu with all buttons."""
+    """عرض لوحة المفاتيح الرئيسية"""
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    markup.add(BTN_RECEPTION, BTN_LOGIC, BTN_SEC,
+    buttons = [BTN_RECEPTION, BTN_LOGIC, BTN_SEC,
                BTN_ARCHIVE, BTN_CORE, BTN_VISUAL,
-               BTN_STRATEGY, BTN_DEV)
+               BTN_STRATEGY, BTN_DEV]
+    markup.add(*buttons)
+
     text = (f"*//ـ الـتـعـرف عـلى الـهـوية ╎ 𝐒𝐓𝐑𝐔𝐂𝐓𝐔𝐑𝐄   𝟎𝟏*\n\n"
             f"◈ الـمـستخـدم: `{message.from_user.first_name}`\n"
             "\"المنطق هو الحقيقة الوحيدة هنا.\"")
     send_interface(message.chat.id, text, markup, logo_key="MAIN")
 
-@bot.message_handler(func=lambda message: True)   # catches all text messages
-def handle_requests(message):
-    """Handles button presses and other text inputs."""
+# ─── معالجة الأزرار (ردود الأقسام) ──────────────────────────────────────────
+@bot.message_handler(func=lambda message: message.text in SECTION_RESPONSES)
+def handle_section(message):
+    """ردود الأزرار المعرفة في SECTION_RESPONSES"""
     cid = message.chat.id
-    txt = message.text
+    data = SECTION_RESPONSES[message.text]
 
-    if txt == BTN_RECEPTION:
-        reception_text = (
-            "//ـ ســيـسـتـم أريــس تــك ╎ *𝐀𝐑𝐈𝐒𝐄 𝐓𝐄𝐂𝐇* ⚖️\n"
-            "— *𝐒𝐭𝐫𝐚𝐭𝐞𝐠𝐢𝐜 𝐈𝐧𝐭𝐞𝐥𝐥𝐢𝐠𝐞𝐧𝐜𝐞* ⚔️ *𝐓𝐞𝐜𝐡 𝐧𝐢𝐜𝐚𝐥 𝐒𝐮𝐩𝐞𝐫𝐢𝐨𝐫𝐢𝐭𝐲* —\n\n"
-            "\"الجميع مجرد أدوات، والمبرمج الحق هو من يملك الكود الذي يتحكم في تلك الأدوات.\"\n\n"
-            "• 💠 [𝐖𝐞𝐥𝐜𝐨𝐦𝐞   𝐆𝐚𝐭𝐞](https://songjinwoo1.github.io/Bot-Song-Jin-Woo/)\n"
-            "• 🐙 𝐆𝐢𝐭𝐇𝐮𝐛 𝐇𝐮𝐛 ↠ `[🔒 Restricted Access]`"
-        )
-        send_interface(cid, reception_text, logo_key="RECEPTION")
-    elif txt == BTN_LOGIC:
-        send_interface(cid, "*//ـ مُـخـتـبـر الـمـنـطـق ╎ 𝐋𝐎𝐆𝐈𝐂   𝐋𝐀𝐁*", logo_key="LOGIC")
-    elif txt == BTN_SEC:
-        send_interface(cid, "*//ـ أمـن الـبـيـانـات ╎ 𝐒𝐄𝐂𝐔𝐑𝐈𝐓𝐘   𝐂𝐄𝐍𝐓𝐄𝐑*", logo_key="SECURITY")
-    elif txt == BTN_ARCHIVE:
-        send_interface(cid, "*//ـ الأرشـيـف ╎ 𝐓𝐇𝐄   𝐀𝐑𝐂𝐇𝐈𝐕𝐄*", logo_key="ARCHIVE")
-    elif txt == BTN_CORE:
-        send_interface(cid, "*//ـ نـواة الـتـطويـر ╎ 𝐃𝐄𝐕𝐄𝐋𝐎𝐏𝐌𝐄𝐍𝐓   𝐂𝐎𝐑𝐄*", logo_key="CORE")
-    elif txt == BTN_VISUAL:
-        send_interface(cid, "*//ـ واجـهة الـنـظام ╎ 𝐕𝐈𝐒𝐔𝐀𝐋   𝐀𝐑𝐂𝐀𝐍𝐄*", logo_key="VISUAL")
-    elif txt == BTN_STRATEGY:
-        send_interface(cid, f"*//ـ غـرفـة الاسـتـشـارة*\n\n\"الهدوء هو قمة القوة.\"", logo_key="STRATEGY")
-    elif txt == BTN_DEV:
+    # تحضير الـ inline keyboard إذا وُجد
+    markup = None
+    if "inline_buttons" in data:
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("𝑺𝒐𝒏𝒈 𝑱𝒊𝒏 𝑾𝒐𝒐", url="https://wa.me/96597805334"))
-        markup.add(types.InlineKeyboardButton("𝙺𝚒𝚢𝚘𝚝𝚊𝚔𝚊 𝙰𝚢𝚊𝒏𝚘𝚔𝚘𝚞𝒋𝚒", url="https://wa.me/201055719273"))
-        send_interface(cid, "*//ـ قـناة الاتـصال الـعـلـيا ╎ 𝐇𝐈𝐆𝐇   𝐂𝐎𝐌𝐌𝐀𝐍𝐃*", markup, logo_key="COMMAND")
+        for btn in data["inline_buttons"]:
+            markup.add(types.InlineKeyboardButton(btn["text"], url=btn["url"]))
 
-# ─── Main Execution ──────────────────────────────────────────────────────────
+    send_interface(cid, data["text"], markup, logo_key=data.get("logo", "MAIN"))
+
+# ─── معالجة النصوص غير المعروفة (اختياري) ────────────────────────────────────
+@bot.message_handler(func=lambda message: True)
+def unknown(message):
+    """رد على أي رسالة نصية غير معروفة"""
+    bot.reply_to(message, "❓ الأمر غير معروف. استخدم القائمة الرئيسية.")
+
+# ─── تشغيل البوت ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("STRUCTURE 01 IS SECURE AND ONLINE...")
-    bot.polling(none_stop=True, timeout=90, long_polling_timeout=10)
+    print("🚀 STRUCTURE 01 IS SECURE AND ONLINE...")
+    logger.info("Bot started")
+    bot.infinity_polling(timeout=90)
