@@ -6,15 +6,19 @@ import telebot
 from telebot import types
 from dotenv import load_dotenv
 
-# ─── إعدادات البيئة والتسجيل ─────────────────────────────────────────────────
+# ─── الإعدادات الأساسية ──────────────────────────────────────────────────────
 load_dotenv()
 
-TOKEN = os.getenv("STRUCTURE_BOT_TOKEN") or os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ لم يتم العثور على التوكن! تأكد من ملف .env")
+# اسم المتغير في ملف .env يجب أن يكون structure_Bot كما هو مطلوب
+TOKEN = os.getenv("structure_Bot")
 
+if not TOKEN:
+    raise ValueError("❌ لم يتم العثور على التوكن! تأكد من وجود structure_Bot في ملف .env")
+
+# قائمة معرفات المسؤولين (يمكن إضافتها في .env مفصولة بفواصل)
 ADMIN_IDS = [int(id.strip()) for id in os.getenv("ADMIN_IDS", "").split(",") if id.strip()]
 
+# إعداد التسجيل للأخطاء
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,7 @@ bot = telebot.TeleBot(TOKEN)
 # ─── ذاكرة التخزين المؤقت لمعرفات الصور (لتحسين السرعة) ─────────────────────
 cached_file_ids: Dict[str, str] = {}
 
-# ─── الهوية البصرية – روابط الصور (يمكن استبدالها بمعرفات مباشرة بعد التخزين) ───
+# ─── روابط الصور (يمكن استبدالها لاحقًا بمعرفات مباشرة) ─────────────────────
 SECTION_LOGOS = {
     "MAIN":      "https://raw.githubusercontent.com/SongJinwoo1/Structure-01/main/IMG_4782.jpeg",
     "RECEPTION": "https://raw.githubusercontent.com/SongJinwoo1/Structure-01/main/IMG_4793.jpeg",
@@ -46,8 +50,7 @@ BTN_VISUAL    = '🎨 واجـهة الـنظام ╎ 𝐕𝐈𝐒𝐔𝐀𝐋  
 BTN_STRATEGY  = '🧠 غـرفـة الاسـتـشـارة ╎ 𝐒𝐓𝐑𝐀𝐓𝐄𝐆𝐘   𝐑𝐎𝐎𝐌'
 BTN_DEV       = '👤 الـتواصل مـع الـقـيادة ╎ 𝐇𝐈𝐆𝐇   𝐂𝐎𝐌𝐌𝐀𝐍𝐃'
 
-# ─── ردود الأزرار (محتوى الصفحات) ────────────────────────────────────────────
-# يمكنك تخصيص النص واللوجو لكل زر هنا
+# ─── ردود الأزرار (محتوى كل قسم) ────────────────────────────────────────────
 SECTION_RESPONSES = {
     BTN_RECEPTION: {
         "text": ("//ـ ســيـسـتـم أريــس تــك ╎ *𝐀𝐑𝐈𝐒𝐄 𝐓𝐄𝐂𝐇*\n"
@@ -88,21 +91,15 @@ SECTION_RESPONSES = {
     }
 }
 
-# ─── محرك الإرسال السريع (مع ذاكرة تخزين وعودة للرابط عند الفشل) ─────────────
+# ─── محرك الإرسال السريع (مع تخزين file_id واستخدام الرابط كبديل) ───────────
 def send_interface(chat_id: int, text: str, reply_markup=None, logo_key: str = "MAIN") -> None:
-    """
-    إرسال واجهة تحتوي على صورة ونص.
-    - تحاول إرسال الصورة باستخدام file_id المخزن أو الرابط.
-    - إذا فشلت، ترسل النص فقط.
-    - تخزن file_id بعد الإرسال الأول لتسريع المرات التالية.
-    """
+    """إرسال واجهة تحتوي على صورة ونص، مع تخزين معرف الصورة لتسريع الإرسال لاحقاً."""
     image = cached_file_ids.get(logo_key, SECTION_LOGOS.get(logo_key))
     try:
         sent = bot.send_photo(chat_id, image,
                               caption=text,
                               reply_markup=reply_markup,
                               parse_mode='Markdown')
-        # تخزين file_id إذا كان جديدًا
         if logo_key not in cached_file_ids:
             cached_file_ids[logo_key] = sent.photo[-1].file_id
             logger.info(f"Cached file_id for {logo_key}")
@@ -114,7 +111,7 @@ def send_interface(chat_id: int, text: str, reply_markup=None, logo_key: str = "
 # ─── أوامر المسؤول ───────────────────────────────────────────────────────────
 @bot.message_handler(commands=['reload'])
 def reload_cache(message):
-    """إعادة تحميل ذاكرة التخزين المؤقت (للمسؤولين فقط)"""
+    """إعادة تحميل ذاكرة التخزين المؤقت للصور (للمسؤولين فقط)"""
     if message.from_user.id not in ADMIN_IDS:
         bot.reply_to(message, "⛔ غير مصرح.")
         return
@@ -124,7 +121,7 @@ def reload_cache(message):
 # ─── واجهة الترحيب الرئيسية ──────────────────────────────────────────────────
 @bot.message_handler(commands=['start'])
 def welcome(message):
-    """عرض لوحة المفاتيح الرئيسية"""
+    """عرض لوحة المفاتيح الرئيسية عند بدء البوت"""
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     buttons = [BTN_RECEPTION, BTN_LOGIC, BTN_SEC,
                BTN_ARCHIVE, BTN_CORE, BTN_VISUAL,
@@ -139,7 +136,7 @@ def welcome(message):
 # ─── معالجة الأزرار (ردود الأقسام) ──────────────────────────────────────────
 @bot.message_handler(func=lambda message: message.text in SECTION_RESPONSES)
 def handle_section(message):
-    """ردود الأزرار المعرفة في SECTION_RESPONSES"""
+    """معالجة الأزرار المعرفة في SECTION_RESPONSES"""
     cid = message.chat.id
     data = SECTION_RESPONSES[message.text]
 
@@ -160,6 +157,6 @@ def unknown(message):
 
 # ─── تشغيل البوت ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("🚀 STRUCTURE 01 IS SECURE AND ONLINE...")
+    print("🚀 STRUCTURE 01 IS ONLINE...")
     logger.info("Bot started")
     bot.infinity_polling(timeout=90)
